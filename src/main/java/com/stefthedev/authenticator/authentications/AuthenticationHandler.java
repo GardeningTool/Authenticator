@@ -3,14 +3,17 @@ package com.stefthedev.authenticator.authentications;
 import com.stefthedev.authenticator.Authenticator;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 public class AuthenticationHandler {
 
     private final Authenticator authenticator;
-    private final FileConfiguration fileConfiguration;
+    private final File userDirectory;
 
     private final Set<Authentication> authentications;
     private final Set<AuthenticationRequest> authenticationRequests;
@@ -19,16 +22,23 @@ public class AuthenticationHandler {
 
     public AuthenticationHandler(Authenticator authenticator) {
         this.authenticator = authenticator;
-        this.fileConfiguration = authenticator.getConfig();
+
+        this.userDirectory = new File(authenticator.getDataFolder() + File.separator + "users" + File.separator);
 
         this.authentications = new HashSet<>();
         this.authenticationRequests = new HashSet<>();
 
         this.uuids = new HashSet<>();
+
+        if (!userDirectory.isDirectory()) {
+            userDirectory.mkdir();
+        }
     }
 
     public Authentication load(UUID uuid) {
-        if(fileConfiguration.get(uuid.toString()) == null) return null;
+        File userFile = new File(userDirectory + File.separator + uuid.toString() + ".yml");
+        if (!userFile.exists()) return null;
+        FileConfiguration fileConfiguration = YamlConfiguration.loadConfiguration(userFile); /*cba to remove the UUID configuration section*/
         String secretKey = new String(Base64.getDecoder().decode(Objects.requireNonNull(fileConfiguration.getString(uuid.toString() + ".key"))));
         boolean enabled = fileConfiguration.getBoolean(uuid.toString() + ".enabled");
         return new Authentication(uuid, secretKey, enabled);
@@ -37,6 +47,9 @@ public class AuthenticationHandler {
     void unload(UUID uuid) {
         Authentication authentication = getAuthentication(uuid);
         if (authentication == null) return;
+        File userFile = new File(userDirectory + File.separator + uuid.toString() + ".yml");
+        if (!userFile.exists()) return; /*shouldn't ever happen*/
+        FileConfiguration fileConfiguration = YamlConfiguration.loadConfiguration(userFile);
         if(authentication.getKey() != null) {
             String secretKey = new String((Base64.getEncoder().encode(authentication.getKey().getBytes())));
             fileConfiguration.set(authentication.getUuid().toString() + ".key", secretKey);
@@ -50,7 +63,17 @@ public class AuthenticationHandler {
     }
 
     public void unload() {
+
         authentications.forEach(authentication -> {
+            File userFile = new File(userDirectory + File.separator + authentication.getUuid().toString() + ".yml");
+            if (!userFile.exists()) {
+                try {
+                    userFile.createNewFile();
+                } catch (IOException exc) {
+                    exc.printStackTrace();
+                }
+            }
+            FileConfiguration fileConfiguration = YamlConfiguration.loadConfiguration(userFile);
             if(authentication.getKey() != null) {
                 String secretKey = new String((Base64.getEncoder().encode(authentication.getKey().getBytes())));
                 fileConfiguration.set(authentication.getUuid().toString() + ".key", secretKey);
@@ -59,9 +82,12 @@ public class AuthenticationHandler {
             }
 
             fileConfiguration.set(authentication.getUuid().toString() + ".enabled", authentication.isEnabled());
-        });
-
-        authenticator.saveConfig();
+            try {
+                fileConfiguration.save(userFile);
+            } catch (IOException exc) {
+                exc.printStackTrace();
+            }
+         });
     }
 
     public void add(Authentication authentication) {
@@ -89,21 +115,11 @@ public class AuthenticationHandler {
     }
 
     public AuthenticationRequest getRequest(UUID uuid) {
-        for(AuthenticationRequest authenticationRequest : authenticationRequests) {
-            if(authenticationRequest.getUuid().equals(uuid)) {
-                return authenticationRequest;
-            }
-        }
-        return null;
+        return authenticationRequests.stream().filter(req -> req.getUuid() == uuid).findFirst().orElse(null);
     }
 
     public Authentication getAuthentication(UUID uuid) {
-        for(Authentication authentication : authentications) {
-            if(authentication.getUuid().equals(uuid)) {
-                return authentication;
-            }
-        }
-        return null;
+        return authentications.stream().filter(authentication -> authentication.getUuid() == uuid).findFirst().orElse(null);
     }
 
     Set<UUID> getUuids() {

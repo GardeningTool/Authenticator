@@ -31,13 +31,13 @@ public class Authenticator extends JavaPlugin {
                 new ResetCommand(this)
         );
 
-        Objects.requireNonNull(getCommand("authenticator")).setExecutor(authenticatorCommand);
+        getCommand("authenticator").setExecutor(authenticatorCommand);
 
         registerListeners(new AuthenticationListener(this));
     }
 
     public void onDisable() {
-        if(authenticationHandler !=  null) authenticationHandler.unload();
+        if(authenticationHandler != null) authenticationHandler.unload();
     }
 
     private void registerListeners(Listener... listeners) {
